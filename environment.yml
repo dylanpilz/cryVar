@@ -1,0 +1,12 @@
+name: cryvar
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - samtools
+  - minimap2
+  - ivar
+  - nextflow
+  - covar
+  - pip
+
