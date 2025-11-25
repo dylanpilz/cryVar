@@ -2,34 +2,97 @@ nextflow.enable.dsl=2
 
 include { PREPROCESSING } from './modules/preprocess'
 
-process SAMTOOLS_SORT_INDEX_POST {
+process COVAR {
     tag "$sample_id"
-    publishDir "${params.outdir}/sorted_post_trim", mode: 'copy'
+    publishDir "${params.outdir}/covar", mode: 'copy'
 
     input:
-    tuple val(sample_id), path(trimmed_bam)
-
+    tuple val(sample_id), path(bam), path(bai)
+    path reference
+    path annotation
+    
     output:
-    tuple val(sample_id), path("${sample_id}.final.sorted.bam")
-    tuple val(sample_id), path("${sample_id}.final.sorted.bam.bai")
+    tuple val(sample_id), path("${sample_id}.covar.tsv")
 
     """
-    samtools sort -o ${sample_id}.final.sorted.bam ${trimmed_bam}
-    samtools index ${sample_id}.final.sorted.bam
+    covar -i ${bam} -r ${reference} -a ${annotation} -o ${sample_id}.covar.tsv
     """
 }
 
 workflow {
-    reads_ch = Channel
-        .fromFilePairs(params.reads, flat: false)
-        .map { sample_id, reads -> tuple(sample_id, reads) }
+    if( !params.metadata ) {
+        throw new IllegalArgumentException("Provide a metadata file containing sample_id, primer_scheme, and collection_date via --metadata.")
+    }
+
+    def metadataFile = file(params.metadata)
+    if( !metadataFile.exists() ) {
+        throw new FileNotFoundException("Metadata file not found: ${metadataFile}")
+    }
+
+    def metadata_ch = Channel
+        .fromPath(metadataFile)
+        .splitCsv(header: true)
+        .map { Map record ->
+            def sampleId       = (record.sample_id ?: '').toString().trim()
+            def primerScheme   = (record.primer_scheme ?: '').toString().trim()
+            def collectionDate = (record.collection_date ?: '').toString().trim()
+
+            def primerFile = file("${params.primer_dir}/${primerScheme}.bed")
+            if( !primerFile.exists() ) {
+                throw new FileNotFoundException("Primer scheme '${primerScheme}' not found in ${params.primer_dir} (expected ${primerFile}).")
+            }
+
+            tuple(sampleId, primerFile)
+        }
+
+    // Get all fastq files and group by sample ID
+    def all_reads_ch = Channel
+        .fromPath(params.reads)
+        .map { file ->
+            def name = file.getName()
+            def sample_id = name
+                .replaceAll(/\.fastq\.gz$/, '')
+                .replaceAll(/_[R12]$/, '')
+            tuple(sample_id, file)
+        }
+        .groupTuple()
+        .map { sample_id, files ->
+            def reads
+            if (files.size() == 2) {
+                def sorted = files.sort { it.getName() }
+                reads = sorted
+            } else if (files.size() == 1) {
+                // Single-end
+                reads = files[0]
+            } else {
+                throw new IllegalArgumentException("Unexpected number of files (${files.size()}) for sample ${sample_id}: ${files}")
+            }
+            tuple(sample_id, reads)
+        }
+    
+    // Get sample IDs from metadata and join with reads
+    def sample_ids_ch = Channel
+        .fromPath(metadataFile)
+        .splitCsv(header: true)
+        .map { Map record -> (record.sample_id ?: '').toString().trim() }
+    
+    reads_ch = sample_ids_ch
+        .map { sample_id -> tuple(sample_id, null) }
+        .join(all_reads_ch, by: 0)
+        .map { sample_id, meta, reads -> 
+            if (reads == null) {
+                throw new FileNotFoundException("No reads found for sample ${sample_id} matching pattern ${params.reads}")
+            }
+            tuple(sample_id, reads)
+        }
 
     reference_ch = Channel.value(file(params.reference))
-    primers_ch   = Channel.value(file(params.primer_bed))
+    annotation_ch = Channel.value(file(params.annotation))
 
-    trimmed_ch = PREPROCESSING(reads_ch, reference_ch, primers_ch)
-    final_bams = SAMTOOLS_SORT_INDEX_POST(trimmed_ch)
-
+    final_bams = PREPROCESSING(reads_ch, reference_ch, metadata_ch)
+    
     final_bams.view { sample_id, bam, bai -> "Final BAM for ${sample_id}: ${bam}" }
+
+    covar_ch = COVAR(final_bams, reference_ch, annotation_ch)
 }
 

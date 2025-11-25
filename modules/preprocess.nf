@@ -43,9 +43,8 @@ process IVAR_TRIM {
     publishDir "${params.outdir}/trimmed", mode: 'copy'
 
     input:
-    tuple val(sample_id), path(sorted_bam), path(sorted_bai)
+    tuple val(sample_id), path(sorted_bam), path(sorted_bai), path(primer_bed)
     path reference
-    path primers
 
     output:
     tuple val(sample_id), path("${sample_id}.trimmed.bam")
@@ -53,10 +52,10 @@ process IVAR_TRIM {
     """
     ivar trim \\
       -i ${sorted_bam} \\
-      -b ${primers} \\
+      -b ${primer_bed} \\
       -p ${sample_id}.trimmed \\
       -m ${params.minreadlen} \\
-      -q ${params.slop} \\
+      -e \\
       ${params.ivar_options}
 
     samtools view -b ${sample_id}.trimmed.bam > ${sample_id}.trimmed.bam.tmp
@@ -64,18 +63,36 @@ process IVAR_TRIM {
     """
 }
 
+process SAMTOOLS_SORT_INDEX_POST {
+    tag "$sample_id"
+    publishDir "${params.outdir}/sorted_post_trim", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(trimmed_bam)
+
+    output:
+    tuple val(sample_id), path("${sample_id}.final.sorted.bam"), path("${sample_id}.final.sorted.bam.bai")
+
+    """
+    samtools sort -o ${sample_id}.final.sorted.bam ${trimmed_bam}
+    samtools index ${sample_id}.final.sorted.bam
+    """
+}
+
 workflow PREPROCESSING {
     take:
     reads_ch
     reference_ch
-    primers_ch
+    metadata_ch
 
     main:
-    aligned   = ALIGN_MINIMAP2(reads_ch, reference_ch)
-    presorted = SAMTOOLS_SORT_INDEX_PRE(aligned)
-    trimmed   = IVAR_TRIM(presorted, reference_ch, primers_ch)
+    aligned              = ALIGN_MINIMAP2(reads_ch, reference_ch)
+    presorted            = SAMTOOLS_SORT_INDEX_PRE(aligned)
+    presorted_with_meta  = presorted.join(metadata_ch)
+    trimmed              = IVAR_TRIM(presorted_with_meta, reference_ch)
+    final_bams           = SAMTOOLS_SORT_INDEX_POST(trimmed)
 
     emit:
-    trimmed
+    final_bams
 }
 
