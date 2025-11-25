@@ -10,12 +10,18 @@ process COVAR {
     tuple val(sample_id), path(bam), path(bai)
     path reference
     path annotation
-    
+
     output:
     tuple val(sample_id), path("${sample_id}.covar.tsv")
 
     """
-    covar -i ${bam} -r ${reference} -a ${annotation} -o ${sample_id}.covar.tsv
+    covar \\
+    -i ${bam} \\
+    -r ${reference} \\
+    -a ${annotation} \\
+    -t 8 \\
+    -o ${sample_id}.covar.tsv \\
+    ${params.covar_options}
     """
 }
 
