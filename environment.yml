@@ -3,14 +3,52 @@ channels:
   - bioconda
   - conda-forge
 dependencies:
-  - samtools
-  - minimap2
-  - ivar
-  - nextflow
-  - covar
-  - pip
+  - bzip2=1.0.8
+  - c-ares=1.34.5
+  - ca-certificates=2025.11.12
+  - coreutils=9.5
+  - covar=0.2.0
+  - curl=8.17.0
+  - htslib=1.21
+  - ivar=1.4.4
+  - k8=1.2
+  - krb5=1.21.3
+  - libcurl=8.17.0
+  - libcxx=21.1.6
+  - libdeflate=1.22
+  - libedit=3.1.20250104
+  - libev=4.33
+  - libexpat=2.7.3
+  - libffi=3.5.2
+  - liblzma=5.8.1
+  - libmpdec=4.0.0
+  - libnghttp2=1.67.0
+  - libsqlite=3.51.0
+  - libssh2=1.11.1
+  - libzlib=1.3.1
+  - minimap2=2.30
+  - ncurses=6.5
+  - nextflow=25.10.0
+  - openjdk=23.0.2
+  - openssl=3.6.0
+  - pip=25.3
+  - python=3.14.0
+  - python_abi=3.14
+  - readline=8.2
+  - samtools=1.21
+  - tk=8.6.13
+  - tzdata=2025b
+  - zstd=1.5.7
   - pip:
-      - python-outbreak-info
-
-
-
+    - certifi==2025.11.12
+    - charset-normalizer==3.4.4
+    - idna==3.11
+    - numpy==2.3.5
+    - pandas==2.3.3
+    - python-dateutil==2.9.0.post0
+    - python_outbreak_info==1.0.4
+    - pytz==2025.2
+    - requests==2.32.5
+    - six==1.17.0
+    - tzdata==2025.2
+    - urllib3==2.5.0
