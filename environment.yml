@@ -9,4 +9,8 @@ dependencies:
   - nextflow
   - covar
   - pip
+  - pip:
+      - python-outbreak-info
+
+
 

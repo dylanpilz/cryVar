@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Nextflow
+.nextflow
+.nextflow.log*
+work
+
+# Data directories (not needed in container)
+data
+results
+
+# Documentation
+README.md
+*.md
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
