@@ -1,20 +1,131 @@
 # cryVar
-SARS-CoV-2 Cryptic Variant calling pipeline
 
-## Sample metadata
+A Nextflow pipeline for detecting cryptic variants in SARS-CoV-2 sequencing data.
 
-The pipeline requires a metadata file supplied via `--metadata /path/to/file`.  
+## Overview
 
-| column          | description                                                                 |
-|-----------------|-----------------------------------------------------------------------------|
-| `sample_id`     | Prefix shared by the paired FASTQ files.   |
-| `primer_scheme` | Primer scheme name; must match a `.bed` file inside `reference/primer`.     |
-| `collection_date` | Sample collection date in `YYYY-MM-DD` format.                           |
+The pipeline processes SARS-CoV-2 sequencing data through the following steps:
+1. **Alignment**: Aligns reads to reference genome using minimap2
+2. **Sorting & Indexing**: Sorts and indexes BAM files
+3. **Primer Trimming**: Removes primer sequences using ivar trim
+4. **Variant Calling**: Calls physically linked variants using covar
+5. **Cryptic Variant Detection**: Separate script to query outbreak.info clinical API for cryptic variants
 
-Example:
+## Prerequisites
 
+- Nextflow (>= 25.10.0)
+- Conda/Mamba (for conda installation) or Docker (for containerized execution)
+- GISAID account for accessing outbreak.info clinical data
+
+## Installation
+
+### Option 1: Conda/Mamba Environment
+
+1. Create the conda environment from the provided `environment.yml`:
+```bash
+conda env create -f environment.yml
+conda activate cryvar
 ```
-sample_id,primer_scheme,collection_date
-sampleA,ARTICv5.3.2,2024-03-11
+
+Or with mamba (faster):
+```bash
+mamba env create -f environment.yml
+conda activate cryvar
 ```
 
+## Input Files
+
+### Required Files
+
+1. **FASTQ files**: Sequencing reads (single-end or paired-end)
+   - Place in `data/fastq/` directory (default)
+   - Naming convention: `{sample_id}.fastq.gz` or `{sample_id}_{R1,R2}.fastq.gz` for paired-end
+
+2. **Metadata CSV file**: Required with the following columns:
+   - `sample_id`: Sample identifier (must match FASTQ file names)
+   - `primer_scheme`: Primer scheme name (must match a `.bed` file in `reference/primer/`)
+   
+   Additional metadata, such as collection date and location info are optional
+
+   Example `data/metadata/sample_metadata.csv`:
+   ```csv
+   sample_id,primer_scheme,collection_date
+   SRR36112015,ARTICv5.3.2,2023-01-15
+   ```
+
+3. **Reference files**:
+   - Reference genome: `reference/reference_genome/NC_045512_Hu-1.fasta`
+   - Annotation file: `reference/annotation/NC_045512_Hu-1.gff`
+   - Primer BED files: `reference/primer/{primer_scheme}.bed`
+
+## Usage
+
+### Basic Usage
+
+Run the pipeline with a metadata file:
+```bash
+nextflow run main.nf --metadata data/metadata/sample_metadata.csv
+```
+Detect cryptic variants from linked mutation output
+
+**NOTE:** The first time you run this script, you will be prompted to log in with your GISAID credentials. This is only required once, and will persist in your environment.
+```bash
+python detect_cryptic.py --covar_dir results/covar --metadata data/metadata/sample_metadata.csv
+```
+
+### With Custom Parameters
+
+```bash
+nextflow run main.nf \
+  --metadata data/metadata/sample_metadata.csv \
+  --reads "data/fastq/*.fastq.gz" \
+  --outdir results \
+  --minreadlen 80
+```
+
+
+## Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--metadata` | `null` | **Required**. Path to metadata CSV file |
+| `--reads` | `"data/fastq/*.fastq.gz"` | Glob pattern for input FASTQ files |
+| `--reference` | `"reference/reference_genome/NC_045512_Hu-1.fasta"` | Path to reference genome FASTA |
+| `--annotation` | `"reference/annotation/NC_045512_Hu-1.gff"` | Path to annotation GFF file |
+| `--primer_dir` | `"reference/primer"` | Directory containing primer BED files |
+| `--outdir` | `"results"` | Output directory |
+| `--minreadlen` | `80` | Minimum read length after trimming |
+| `--ivar_options` | `""` | Additional options for ivar trim |
+| `--covar_options` | `""` | Additional options for covar |
+
+## Output Structure
+
+###Pipeline outputs
+```
+results/
+├── alignment/              # Unsorted BAM files after alignment
+│   └── {sample_id}.unsorted.bam
+├── sorted_pre_trim/        # Sorted BAM files before trimming
+│   ├── {sample_id}.sorted.bam
+│   └── {sample_id}.sorted.bam.bai
+├── trimmed/                # BAM files after primer trimming
+│   └── {sample_id}.trimmed.bam
+├── sorted_post_trim/       # Final sorted BAM files
+│   ├── {sample_id}.final.sorted.bam
+│   └── {sample_id}.final.sorted.bam.bai
+└── covar/                  # Variant calling results
+    └── {sample_id}.covar.tsv
+```
+
+### covar_clinical_detects.tsv
+| Column           | Description                                                 |
+| ---------------- | ------------------------------------------------------------|
+| `nt_mutations`   | Nucleotide mutations for this cluster                       |
+| `aa_mutations`   | Corresponding amino acid translations (where possible*)     |
+| `cluster_depth`  | Total number of read pairs with this cluster of mutations   |
+| `total_depth`    | Total number of reads spanning this cluster                 |
+| `frequency`      | Mutation frequency (cluster depth / total depth)            |
+| `coverage_start` | Maximum read start site for which this cluster was detected |
+| `coverage_end`   | Minimum read end site for which this cluster was detected   |
+| `query`          | Raw mutation query submitted to outbreak.info API           |
+| `num_clinical_detections` | Number of clinical detections for this mutation cluster |
