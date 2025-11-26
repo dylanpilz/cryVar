@@ -27,7 +27,7 @@ process COVAR {
 
 workflow {
     if( !params.metadata ) {
-        throw new IllegalArgumentException("Provide a metadata file containing sample_id, primer_scheme, and collection_date via --metadata.")
+        throw new IllegalArgumentException("Provide a metadata file containing sample_id and primer_scheme via --metadata.")
     }
 
     def metadataFile = file(params.metadata)
@@ -66,6 +66,7 @@ workflow {
             def reads
             if (files.size() == 2) {
                 def sorted = files.sort { it.getName() }
+                // Paired end
                 reads = sorted
             } else if (files.size() == 1) {
                 // Single-end
@@ -97,8 +98,6 @@ workflow {
 
     final_bams = PREPROCESSING(reads_ch, reference_ch, metadata_ch)
     
-    final_bams.view { sample_id, bam, bai -> "Final BAM for ${sample_id}: ${bam}" }
-
     covar_ch = COVAR(final_bams, reference_ch, annotation_ch)
 }
 
