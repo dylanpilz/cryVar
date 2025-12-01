@@ -6,3 +6,6 @@ results/*
 .nextflow/*
 .nextflow.log*
 work/*
+
+# pycache
+__pycache__/*
