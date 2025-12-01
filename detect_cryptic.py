@@ -6,9 +6,10 @@ import sys, os
 import pandas as pd
 from tqdm import tqdm
 
-from outbreak_data import outbreak_data as od
-from outbreak_data import authenticate_user
 from outbreak_tools import crumbs
+from outbreak_data import outbreak_data as od
+
+from gisaid_authentication import check_authentication
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -33,12 +34,24 @@ parser.add_argument(
     "--output", help="Output file name", default="covar_clinical_detections.tsv"
 )
 
+# Hide print statements from API calls
+class HiddenPrints:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
+
 def main():
     # Authenticate with GISAID credentials
     try:
-        authenticate_user.get_authentication()
+        check_authentication()
     except:
-        authenticate_user.authenticate_new_user()
+        raise Exception("Error authenticating with GISAID credentials\n"
+                        "Please run `python gisaid_authentication.py` "
+                        "to authenticate and try again")
 
     args = parser.parse_args()
 
@@ -55,15 +68,6 @@ def main():
     # Save output
     cryptic_variants.to_csv(args.output, sep="\t", index=False)
 
-# Hide print statements from API calls
-class HiddenPrints:
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
 
 
 def parse_aa_muts(muts):

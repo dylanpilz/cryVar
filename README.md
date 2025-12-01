@@ -60,6 +60,15 @@ conda activate cryvar
 
 ## Usage
 
+### GISAID Authentication
+In order to access the outbreak.info clinical API, you must authenticate with GISAID.
+
+Run authentication:
+```bash
+python gisaid_authemtication.py
+```
+This will open a web browser and prompt you to enter your GISAID credentials. Upon doing so, an auth token will be stored in the pycache for your environment, so this only needs to be done once.
+
 ### Basic Usage
 
 Run the pipeline with a metadata file:
@@ -68,7 +77,6 @@ nextflow run main.nf --metadata data/metadata/sample_metadata.csv
 ```
 Detect cryptic variants from linked mutation output
 
-**NOTE:** The first time you run this script, you will be prompted to log in with your GISAID credentials. This is only required once, and will persist in your environment.
 ```bash
 python detect_cryptic.py --covar_dir results/covar --metadata data/metadata/sample_metadata.csv
 ```
@@ -100,7 +108,7 @@ nextflow run main.nf \
 
 ## Output Structure
 
-###Pipeline outputs
+### Pipeline outputs
 ```
 results/
 ├── alignment/              # Unsorted BAM files after alignment
@@ -117,7 +125,7 @@ results/
     └── {sample_id}.covar.tsv
 ```
 
-### covar_clinical_detects.tsv
+### detect_cryptic.py output TSV
 | Column           | Description                                                 |
 | ---------------- | ------------------------------------------------------------|
 | `nt_mutations`   | Nucleotide mutations for this cluster                       |
