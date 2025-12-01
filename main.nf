@@ -2,6 +2,31 @@ nextflow.enable.dsl=2
 
 include { PREPROCESSING } from './modules/preprocess'
 
+process GISAID_AUTHENTICATION {
+    output:
+    path "auth_complete.txt", emit: auth_status
+
+    script:
+    """
+    python << 'PYTHON_SCRIPT'
+    import sys
+    from outbreak_data import authenticate_user
+    try:
+        authenticate_user.get_authentication()
+        print('Authentication already exists')
+    except:
+        print('Missing authentication. Please run `python gisaid_authentication.py` to authenticate and try again')
+        sys.exit(1)
+    PYTHON_SCRIPT
+    
+    if [ \$? -eq 0 ]; then
+        echo "Authentication verified" > auth_complete.txt
+    else
+        exit 1
+    fi
+    """
+}
+
 process COVAR {
     tag "$sample_id"
     publishDir "${params.outdir}/covar", mode: 'copy'
@@ -98,7 +123,11 @@ workflow {
 
     reference_ch = Channel.value(file(params.reference))
     annotation_ch = Channel.value(file(params.annotation))
-
+    
+    // Check GISAID authentication
+    auth_status = GISAID_AUTHENTICATION()
+    auth_status.view()
+    
     final_bams = PREPROCESSING(reads_ch, reference_ch, metadata_ch)
     
     covar_ch = COVAR(final_bams, reference_ch, annotation_ch)

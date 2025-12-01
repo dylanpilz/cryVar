@@ -67,7 +67,7 @@ Run authentication:
 ```bash
 python gisaid_authemtication.py
 ```
-This will open a web browser and prompt you to enter your GISAID credentials. Upon doing so, an auth token will be stored in your pycache, so this only needs to be done once.
+This will open a web browser and prompt you to enter your GISAID credentials. Upon doing so, an auth token will be stored in your environment, so this only needs to be done once.
 
 ### Basic Usage
 
