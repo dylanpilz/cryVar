@@ -2,7 +2,6 @@ nextflow.enable.dsl=2
 
 process ALIGN_MINIMAP2 {
     tag "$sample_id"
-    publishDir "${params.outdir}/alignment", mode: 'copy'
 
     input:
     tuple val(sample_id), path(reads)
@@ -24,7 +23,6 @@ process ALIGN_MINIMAP2 {
 
 process SAMTOOLS_SORT_INDEX_PRE {
     tag "$sample_id"
-    publishDir "${params.outdir}/sorted_pre_trim", mode: 'copy'
 
     input:
     tuple val(sample_id), path(bam)
@@ -40,8 +38,7 @@ process SAMTOOLS_SORT_INDEX_PRE {
 
 process IVAR_TRIM {
     tag "$sample_id"
-    publishDir "${params.outdir}/trimmed", mode: 'copy'
-
+    
     input:
     tuple val(sample_id), path(sorted_bam), path(sorted_bai), path(primer_bed)
     path reference
