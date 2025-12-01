@@ -111,13 +111,6 @@ nextflow run main.nf \
 ### Pipeline outputs
 ```
 results/
-├── alignment/              # Unsorted BAM files after alignment
-│   └── {sample_id}.unsorted.bam
-├── sorted_pre_trim/        # Sorted BAM files before trimming
-│   ├── {sample_id}.sorted.bam
-│   └── {sample_id}.sorted.bam.bai
-├── trimmed/                # BAM files after primer trimming
-│   └── {sample_id}.trimmed.bam
 ├── sorted_post_trim/       # Final sorted BAM files
 │   ├── {sample_id}.final.sorted.bam
 │   └── {sample_id}.final.sorted.bam.bai
