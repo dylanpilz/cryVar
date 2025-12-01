@@ -19,7 +19,7 @@ process COVAR {
     -i ${bam} \\
     -r ${reference} \\
     -a ${annotation} \\
-    -t 8 \\
+    -t ${task.cpus} \\
     -o ${sample_id}.covar.tsv \\
     ${params.covar_options}
     """
