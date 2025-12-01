@@ -58,6 +58,9 @@ workflow {
             def name = file.getName()
             def sample_id = name
                 .replaceAll(/\.fastq\.gz$/, '')
+                // Handle Illumina format: _S\d+_L\d+_R[12]_\d+ (e.g., _S8_L001_R1_001)
+                .replaceAll(/_S\d+_L\d+_R[12]_\d+$/, '')
+                // Handle simple format: _R[12] (e.g., _R1, _R2)
                 .replaceAll(/_[R12]$/, '')
             tuple(sample_id, file)
         }
