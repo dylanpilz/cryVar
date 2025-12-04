@@ -126,7 +126,6 @@ workflow {
     
     // Check GISAID authentication
     auth_status = GISAID_AUTHENTICATION()
-    auth_status.view()
     
     final_bams = PREPROCESSING(reads_ch, reference_ch, metadata_ch)
     

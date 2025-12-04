@@ -4,6 +4,8 @@ import warnings
 import argparse
 import sys, os
 import pandas as pd
+import pickle
+from pathlib import Path
 from tqdm import tqdm
 
 from outbreak_tools import crumbs
@@ -122,46 +124,74 @@ def join_metadata(aggregate_covariants, metadata_file):
     return aggregate_covariants
 
 
-def query_clinical_data(aggregate_covariants, freyja_barcodes, START_DATE, END_DATE):
+def query_clinical_data(aggregate_covariants, freyja_barcodes, START_DATE, END_DATE, cache_dir=".cache"):
     """Query outbreak.info API for clinical detections of mutation clusters"""
-
+    
+    # Create cache directory
+    Path(cache_dir).mkdir(exist_ok=True)
+    cache_file = Path(cache_dir) / "clinical_data_cache.pkl"
+    
+    # Load existing cache
+    if cache_file.exists():
+        with open(cache_file, 'rb') as f:
+            cache = pickle.load(f)
+    else:
+        cache = {}
+    
     lineage_key = crumbs.get_alias_key()
     barcode_muts = pd.read_feather(freyja_barcodes).columns
-
-    cache = {}
-    for row in tqdm(aggregate_covariants.iterrows(), desc="Querying clinical data"):
-        cluster = row[1]["query"]
-        if str(cluster) in cache:
+    
+    # Pre-filter and deduplicate
+    unique_clusters = aggregate_covariants.drop_duplicates(subset=['query'])
+    
+    # Filter out barcode matches upfront
+    unique_clusters = unique_clusters[
+        ~unique_clusters['nt_mutations'].apply(
+            lambda x: all([m in barcode_muts for m in str(x).split(" ")])
+        )
+    ]
+    
+    # Query only uncached clusters
+    for idx, row in tqdm(unique_clusters.iterrows(), 
+                         total=len(unique_clusters),
+                         desc="Querying clinical data"):
+        cluster = row["query"]
+        cluster_key = str(cluster)
+        
+        if cluster_key in cache:
             continue
-        if all([m in barcode_muts for m in row[1]["nt_mutations"].split(" ")]): # Skip if all mutations are in freyja barcodes
-            cache[str(cluster)] = None
-            continue
+            
         try:
             with HiddenPrints():
                 mut_data = od.lineage_cl_prevalence(
                     ".",
                     descendants=True,
                     mutations=cluster,
-                    #location=LOCATION,
                     datemin=START_DATE,
                     datemax=END_DATE,
                     lineage_key=lineage_key,
                 )
         except NameError as e:
             print(f"Error querying outbreak.info for cluster {cluster}: {e}")
+            cache[cluster_key] = 0
             continue
 
         if mut_data is not None:
-            cache[str(cluster)] = mut_data["lineage_count"].sum()
+            cache[cluster_key] = int(mut_data["lineage_count"].sum())
         else:
-            cache[str(cluster)] = 0
-
+            cache[cluster_key] = 0
+    
+    # Save cache
+    with open(cache_file, 'wb') as f:
+        pickle.dump(cache, f)
+    
+    # Map results back
     aggregate_covariants["num_clinical_detections"] = aggregate_covariants["query"].apply(
-        lambda x: cache[str(x)] if str(x) in cache else None
+        lambda x: cache.get(str(x))
     )
-
+    
     aggregate_covariants = aggregate_covariants.dropna(subset=["num_clinical_detections"])
-
+    
     return aggregate_covariants
 
 if __name__ == '__main__':
