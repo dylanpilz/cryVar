@@ -9,6 +9,7 @@ dependencies:
   - coreutils=9.5
   - covar=0.2.0
   - curl=8.17.0
+  - git
   - htslib=1.21
   - ivar=1.4.4
   - k8=1.2
