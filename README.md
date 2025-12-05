@@ -115,10 +115,13 @@ results/
 │   ├── {sample_id}.final.sorted.bam
 │   └── {sample_id}.final.sorted.bam.bai
 └── covar/                  # Variant calling results
-    └── {sample_id}.covar.tsv
+|   └── {sample_id}.covar.tsv
+|__ detect_cryptic/
+    |__ covar_clinical_detections.tsv # All physically linked mutations with number of clinical detects
+    |__ cryptic_variants.tsv # Same as above, but filtered for cryptic variants (<= 10 clinical detects, additional QC filters)
 ```
 
-### detect_cryptic.py output TSV
+### covar_clinical_detections.tsv
 | Column           | Description                                                 |
 | ---------------- | ------------------------------------------------------------|
 | `nt_mutations`   | Nucleotide mutations for this cluster                       |
