@@ -1,12 +1,14 @@
-""" Detect cryptic mutation clusters in wastewater sequencing data """
+""" Detect cryptic SARS-CoV-2 mutation clusters in wastewater sequencing data """
 
 import warnings
 import argparse
 import sys, os
 import pandas as pd
 import pickle
+from datetime import datetime
 from pathlib import Path
 from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
 
 from outbreak_tools import crumbs
 from outbreak_data import outbreak_data as od
@@ -17,23 +19,25 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # Date window for clinical data query
 START_DATE = "2020-01-01"
-END_DATE = "2025-12-31"
-FREYJA_BARCODES = "reference/freyja/usher_barcodes.feather"
+END_DATE = datetime.now().strftime("%Y-%m-%d")
 
 parser = argparse.ArgumentParser(
     description="Detect cryptic mutation clusters in wastewater sequencing data"
 )
 parser.add_argument(
-    "--covar_dir", help="Directory containing coVar (linked mutations) output", type=str
+    "--covar_dir", help="Directory containing coVar (linked mutations) output", type=str, required=True, default="results/covar"
 )
 parser.add_argument(
-    "--metadata", help="Metadata file", type=str
+    "--metadata", help="Metadata file", type=str, required=True
 )
 parser.add_argument(
-    "--freyja_barcodes", help="Freyja barcodes file", type=str, default=FREYJA_BARCODES
+    "--output_dir", help="Output directory", default="results/detect_cryptic"
 )
 parser.add_argument(
-    "--output", help="Output file name", default="covar_clinical_detections.tsv"
+    "--processes", help="Number of parallel processes to use", type=int, default=None
+)
+parser.add_argument(
+    "--max_clinical_detections", help="Maximum number of clinical detections to consider a cryptic variant", type=int, default=10
 )
 
 # Hide print statements from API calls
@@ -63,13 +67,24 @@ def main():
     aggregate_covariants = join_metadata(aggregate_covariants, args.metadata)
 
     # Query clinical data
-    cryptic_variants = query_clinical_data(
-        aggregate_covariants, FREYJA_BARCODES, START_DATE, END_DATE
+    covariants_with_clinical_data = query_clinical_data(
+        aggregate_covariants, START_DATE, END_DATE, 
+        processes=args.processes
     )
 
     # Save output
-    cryptic_variants.to_csv(args.output, sep="\t", index=False)
+    covariants_with_clinical_data.to_csv(f'{args.output_dir}/covar_clinical_detections.tsv', sep="\t", index=False)
 
+
+    # Filter for cryptic variants
+    cryptic_variants = covariants_with_clinical_data[covariants_with_clinical_data["num_clinical_detections"] <= args.max_clinical_detections]
+    cryptic_variants = cryptic_variants[cryptic_variants["query"].apply(len) >= 2]
+
+    # select for clusters that appear at least 2 times in the wastewater data
+    counts = cryptic_variants.groupby("nt_mutations").size().reset_index(name="count")
+    counts = counts[counts["count"] >= 2]
+    cryptic_variants = cryptic_variants[cryptic_variants["nt_mutations"].isin(counts["nt_mutations"])]
+    cryptic_variants.to_csv(f'{args.output_dir}/cryptic_variants.tsv', sep="\t", index=False)
 
 
 def parse_aa_muts(muts):
@@ -103,7 +118,7 @@ def parse_covariants(covar_dir):
 
         df["query"] = df["aa_mutations"].apply(parse_aa_muts)
         df = df[df["query"].apply(len) > 0]
-        df["sample_id"] = file
+        df["sample_id"] = file.split('.covar.tsv')[0]
         agg_covariants = pd.concat([agg_covariants, df])
 
     return agg_covariants
@@ -112,8 +127,6 @@ def join_metadata(aggregate_covariants, metadata_file):
     """Add metadata to aggregate covariants dataframe"""
 
     metadata = pd.read_csv(metadata_file)
-    aggregate_covariants['sample_id'] = aggregate_covariants['sample_id'].str.split('.trimmed').str[0]
-
     # Join metadata
     aggregate_covariants = aggregate_covariants.merge(
         metadata[metadata.columns],
@@ -124,7 +137,33 @@ def join_metadata(aggregate_covariants, metadata_file):
     return aggregate_covariants
 
 
-def query_clinical_data(aggregate_covariants, freyja_barcodes, START_DATE, END_DATE, cache_dir=".cache"):
+def query_single_cluster(args_tuple):
+    """Worker function to query a single cluster"""
+    cluster, START_DATE, END_DATE, lineage_key = args_tuple
+    cluster_key = str(cluster)
+    
+    try:
+        with HiddenPrints():
+            mut_data = od.lineage_cl_prevalence(
+                ".",
+                descendants=True,
+                mutations=cluster,
+                datemin=START_DATE,
+                datemax=END_DATE,
+                lineage_key=lineage_key,
+            )
+    except Exception as e:
+        print(f"Error querying outbreak.info for cluster {cluster}: {e}")
+        return (cluster_key, 0)
+
+    if mut_data is not None:
+        return (cluster_key, int(mut_data["lineage_count"].sum()))
+    else:
+        return (cluster_key, 0)
+
+
+def query_clinical_data(aggregate_covariants, START_DATE, END_DATE, 
+                        cache_dir=".cache", processes=None):
     """Query outbreak.info API for clinical detections of mutation clusters"""
     
     # Create cache directory
@@ -139,47 +178,39 @@ def query_clinical_data(aggregate_covariants, freyja_barcodes, START_DATE, END_D
         cache = {}
     
     lineage_key = crumbs.get_alias_key()
-    barcode_muts = pd.read_feather(freyja_barcodes).columns
     
     # Pre-filter and deduplicate
     unique_clusters = aggregate_covariants.drop_duplicates(subset=['query'])
     
-    # Filter out barcode matches upfront
-    unique_clusters = unique_clusters[
-        ~unique_clusters['nt_mutations'].apply(
-            lambda x: all([m in barcode_muts for m in str(x).split(" ")])
-        )
-    ]
-    
-    # Query only uncached clusters
-    for idx, row in tqdm(unique_clusters.iterrows(), 
-                         total=len(unique_clusters),
-                         desc="Querying clinical data"):
+    # Filter out already cached clusters
+    uncached_clusters = []
+    for idx, row in unique_clusters.iterrows():
         cluster = row["query"]
         cluster_key = str(cluster)
+        if cluster_key not in cache:
+            uncached_clusters.append(cluster)
+    
+    print(uncached_clusters)
+    # Query uncached clusters in parallel
+    if uncached_clusters:
+        if processes is None:
+            processes = cpu_count()
         
-        if cluster_key in cache:
-            continue
-            
-        try:
-            with HiddenPrints():
-                mut_data = od.lineage_cl_prevalence(
-                    ".",
-                    descendants=True,
-                    mutations=cluster,
-                    datemin=START_DATE,
-                    datemax=END_DATE,
-                    lineage_key=lineage_key,
-                )
-        except NameError as e:
-            print(f"Error querying outbreak.info for cluster {cluster}: {e}")
-            cache[cluster_key] = 0
-            continue
-
-        if mut_data is not None:
-            cache[cluster_key] = int(mut_data["lineage_count"].sum())
-        else:
-            cache[cluster_key] = 0
+        # Prepare arguments for worker function
+        query_args = [(cluster, START_DATE, END_DATE, lineage_key) 
+                     for cluster in uncached_clusters]
+        
+        # Query in parallel
+        with Pool(processes=processes) as pool:
+            results = list(tqdm(
+                pool.imap(query_single_cluster, query_args),
+                total=len(query_args),
+                desc="Querying clinical data"
+            ))
+        
+        # Update cache with results
+        for cluster_key, count in results:
+            cache[cluster_key] = count
     
     # Save cache
     with open(cache_file, 'wb') as f:

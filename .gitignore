@@ -7,5 +7,6 @@ results/*
 .nextflow.log*
 work/*
 
-# pycache
+# caching directories
 __pycache__/*
+.cache/*
