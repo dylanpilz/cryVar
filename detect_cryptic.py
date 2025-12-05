@@ -3,6 +3,7 @@
 import warnings
 import argparse
 import sys, os
+import re
 import pandas as pd
 import pickle
 from datetime import datetime
@@ -25,7 +26,7 @@ parser = argparse.ArgumentParser(
     description="Detect cryptic mutation clusters in wastewater sequencing data"
 )
 parser.add_argument(
-    "--covar_dir", help="Directory containing coVar (linked mutations) output", type=str, required=True, default="results/covar"
+    "--covar_dir", help="Directory containing coVar (linked mutations) output", type=str, default="results/covar"
 )
 parser.add_argument(
     "--metadata", help="Metadata file", type=str, required=True
@@ -73,19 +74,39 @@ def main():
     )
 
     # Save output
+    Path(args.output_dir).mkdir(exist_ok=True)
     covariants_with_clinical_data.to_csv(f'{args.output_dir}/covar_clinical_detections.tsv', sep="\t", index=False)
 
-
     # Filter for cryptic variants
+
+    # Must be detected in at least 2 separate samples
     cryptic_variants = covariants_with_clinical_data[covariants_with_clinical_data["num_clinical_detections"] <= args.max_clinical_detections]
+    cryptic_variants.to_csv("cryptic_variants_before_filtering.tsv", sep="\t", index=False)
     cryptic_variants = cryptic_variants[cryptic_variants["query"].apply(len) >= 2]
 
     # select for clusters that appear at least 2 times in the wastewater data
     counts = cryptic_variants.groupby("nt_mutations").size().reset_index(name="count")
     counts = counts[counts["count"] >= 2]
     cryptic_variants = cryptic_variants[cryptic_variants["nt_mutations"].isin(counts["nt_mutations"])]
+
     cryptic_variants.to_csv(f'{args.output_dir}/cryptic_variants.tsv', sep="\t", index=False)
 
+
+def get_position(mut):
+    """Get position of mutation"""
+    if 'DEL' in mut:
+        match = re.search(r':DEL(\d+)', mut)
+        if match:
+            return int(match.group(1))
+    if 'INS' in mut:
+        match = re.search(r':INS(\d+)', mut)
+        if match:
+            return int(match.group(1))    
+    match = re.search(r':([A-Z*])(\d+)([A-Z*])', mut)
+    if match:
+        return int(match.group(2))
+    
+    raise ValueError(f"Could not extract position from mutation: {mut}")
 
 def parse_aa_muts(muts):
     """Prepare query for aa mutations"""
@@ -106,7 +127,7 @@ def parse_aa_muts(muts):
                 output.append(m)
         else:
             output.append(m)
-    return list(set(output))
+    return sorted(list(set(output)), key=get_position)
 
 
 def parse_covariants(covar_dir):
@@ -190,7 +211,6 @@ def query_clinical_data(aggregate_covariants, START_DATE, END_DATE,
         if cluster_key not in cache:
             uncached_clusters.append(cluster)
     
-    print(uncached_clusters)
     # Query uncached clusters in parallel
     if uncached_clusters:
         if processes is None:
