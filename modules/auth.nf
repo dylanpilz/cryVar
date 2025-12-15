@@ -24,3 +24,11 @@ process GISAID_AUTHENTICATION {
     fi
     """
 }
+
+workflow AUTH {
+    main:
+    auth_status = GISAID_AUTHENTICATION()
+
+    emit:
+    auth_status
+}

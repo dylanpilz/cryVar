@@ -1,6 +1,6 @@
 nextflow.enable.dsl=2
 
-include { GISAID_AUTHENTICATION } from './modules/auth'
+include { AUTH } from './modules/auth'
 include { PREPROCESSING } from './modules/preprocess'
 
 
@@ -29,20 +29,30 @@ process COVAR {
 
 process DETECT_CRYPTIC {
     input:
-    path(covar_dir)
+    path(covar_files)
     path(metadata_file)
+    path(detect_script)
 
     output:
     path("cryptic_variants.tsv")
 
+    script:
+    // Handle both single file and list of files
+    def fileList = covar_files instanceof List ? covar_files : [covar_files]
+    def copyCommands = fileList.collect { file -> "cp '${file}' covar_dir/" }.join('\n    ')
     """
     mkdir -p covar_dir
-    cp ${covar_dir}/*.covar.tsv covar_dir/
+    ${copyCommands}
 
-    python detect_cryptic.py \\
+    echo "Running detect_cryptic.py..." >&2
+    echo "Script location: ${detect_script}" >&2
+    echo "Covar files copied to covar_dir:" >&2
+    ls -lh covar_dir/ >&2
+
+    python -u ${detect_script} \\
     --covar_dir covar_dir \\
     --metadata ${metadata_file} \\
-    --output_dir results/detect_cryptic
+    --output_dir results/detect_cryptic 2>&1 | tee detect_cryptic.log >&2
     """
 }
 
@@ -120,12 +130,20 @@ workflow {
     reference_ch = Channel.value(file(params.reference))
     annotation_ch = Channel.value(file(params.annotation))
     
-    auth_status = GISAID_AUTHENTICATION()
+    auth_status = AUTH()
     
     final_bams = PREPROCESSING(reads_ch, reference_ch, metadata_ch)
     
-    covar_ch = COVAR(final_bams, reference_ch, annotation_ch).collect()
+    covar_ch = COVAR(final_bams, reference_ch, annotation_ch)
+    
+    covar_files_ch = covar_ch
+        .map { sample_id, covar_file -> covar_file }
+        .collect()
 
-    DETECT_CRYPTIC(covar_ch, metadata_ch)
+    DETECT_CRYPTIC(
+        covar_files_ch, 
+        Channel.value(metadataFile),
+        file(params.detect_cryptic_script)
+    )
 }
 
