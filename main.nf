@@ -2,59 +2,8 @@ nextflow.enable.dsl=2
 
 include { AUTH } from './modules/auth'
 include { PREPROCESSING } from './modules/preprocess'
+include { CRYPTIC_VARIANT_DETECTION } from './modules/cryptic_variant_detection'
 
-
-process COVAR {
-    tag "$sample_id"
-    publishDir "${params.outdir}/covar", mode: 'copy'
-
-    input:
-    tuple val(sample_id), path(bam), path(bai)
-    path reference
-    path annotation
-
-    output:
-    tuple val(sample_id), path("${sample_id}.covar.tsv")
-
-    """
-    covar \\
-    -i ${bam} \\
-    -r ${reference} \\
-    -a ${annotation} \\
-    -t ${task.cpus} \\
-    -o ${sample_id}.covar.tsv \\
-    ${params.covar_options}
-    """
-}
-
-process DETECT_CRYPTIC {
-    input:
-    path(covar_files)
-    path(metadata_file)
-    path(detect_script)
-
-    output:
-    path("cryptic_variants.tsv")
-
-    script:
-    // Handle both single file and list of files
-    def fileList = covar_files instanceof List ? covar_files : [covar_files]
-    def copyCommands = fileList.collect { file -> "cp '${file}' covar_dir/" }.join('\n    ')
-    """
-    mkdir -p covar_dir
-    ${copyCommands}
-
-    echo "Running detect_cryptic.py..." >&2
-    echo "Script location: ${detect_script}" >&2
-    echo "Covar files copied to covar_dir:" >&2
-    ls -lh covar_dir/ >&2
-
-    python -u ${detect_script} \\
-    --covar_dir covar_dir \\
-    --metadata ${metadata_file} \\
-    --output_dir results/detect_cryptic 2>&1 | tee detect_cryptic.log >&2
-    """
-}
 
 workflow {
     if( !params.metadata ) {
@@ -134,14 +83,10 @@ workflow {
     
     final_bams = PREPROCESSING(reads_ch, reference_ch, metadata_ch)
     
-    covar_ch = COVAR(final_bams, reference_ch, annotation_ch)
-    
-    covar_files_ch = covar_ch
-        .map { sample_id, covar_file -> covar_file }
-        .collect()
-
-    DETECT_CRYPTIC(
-        covar_files_ch, 
+    CRYPTIC_VARIANT_DETECTION(
+        final_bams,
+        reference_ch,
+        annotation_ch,
         Channel.value(metadataFile),
         file(params.detect_cryptic_script)
     )
