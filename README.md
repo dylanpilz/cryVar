@@ -101,6 +101,8 @@ nextflow run main.nf \
   --metadata data/metadata/sample_metadata.csv
 ```
 
+**Note**: The process DETECT_CRYPTIC can take up to several hours to complete, so it is recommended to run it in the background.
+
 ## Parameters
 
 | Parameter | Default | Description |

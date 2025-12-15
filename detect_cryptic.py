@@ -81,7 +81,6 @@ def main():
 
     # Must be detected in at least 2 separate samples
     cryptic_variants = covariants_with_clinical_data[covariants_with_clinical_data["num_clinical_detections"] <= args.max_clinical_detections]
-    cryptic_variants.to_csv("cryptic_variants_before_filtering.tsv", sep="\t", index=False)
     cryptic_variants = cryptic_variants[cryptic_variants["query"].apply(len) >= 2]
 
     # select for clusters that appear at least 2 times in the wastewater data

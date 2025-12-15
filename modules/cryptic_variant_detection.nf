@@ -22,12 +22,15 @@ process COVAR {
 }
 
 process DETECT_CRYPTIC {
+    publishDir "${params.outdir}/detect_cryptic", mode: 'copy'
+
     input:
     path(covar_files)
     path(metadata_file)
     path(detect_script)
 
     output:
+    path("covar_clinical_detections.tsv")
     path("cryptic_variants.tsv")
 
     script:
@@ -38,15 +41,10 @@ process DETECT_CRYPTIC {
     mkdir -p covar_dir
     ${copyCommands}
 
-    echo "Running detect_cryptic.py..." >&2
-    echo "Script location: ${detect_script}" >&2
-    echo "Covar files copied to covar_dir:" >&2
-    ls -lh covar_dir/ >&2
-
-    python -u ${detect_script} \\
+    python ${detect_script} \\
     --covar_dir covar_dir \\
     --metadata ${metadata_file} \\
-    --output_dir results/detect_cryptic 2>&1 | tee detect_cryptic.log >&2
+    --output_dir . | tee detect_cryptic.log >&2
     """
 }
 
@@ -63,12 +61,13 @@ workflow CRYPTIC_VARIANT_DETECTION {
     covar_files_ch = covar_ch
         .map { sample_id, covar_file -> covar_file }
         .collect()
-    cryptic_variants = DETECT_CRYPTIC(
+    detect_output = DETECT_CRYPTIC(
         covar_files_ch,
         metadata_file,
         detect_script
     )
 
     emit:
-    cryptic_variants
+    clinical_detections = detect_output[0]
+    cryptic_variants = detect_output[1]
 }
