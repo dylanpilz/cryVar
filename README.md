@@ -14,7 +14,7 @@ The pipeline processes SARS-CoV-2 sequencing data through the following steps:
 ## Prerequisites
 
 - Nextflow (>= 25.10.0)
-- Conda/Mamba (for conda installation) or Docker (for containerized execution)
+- Conda/Mamba (for conda installation)
 - GISAID account for accessing outbreak.info clinical data
 
 ## Installation
@@ -30,7 +30,7 @@ conda activate cryvar
 Or with mamba (faster):
 ```bash
 mamba env create -f environment.yml
-conda activate cryvar
+mamba activate cryvar
 ```
 
 ## Input Files
@@ -65,20 +65,11 @@ In order to access the outbreak.info clinical API, you must authenticate with GI
 
 Run authentication:
 ```bash
-python gisaid_authemtication.py
+python gisaid_authentication.py
 ```
-This will open a web browser and prompt you to enter your GISAID credentials. Upon doing so, an auth token will be stored in your environment, so this only needs to be done once.
-
-### Basic Usage
-
-Run the pipeline with a metadata file:
+This will open a web browser and prompt you to enter your GISAID credentials. If running the pipeline locally, the auth token will be stored in your environment, so this only needs to be done once. If running the pipeline in Docker, you will need to set the GISAID token path as an environment variable.
 ```bash
-nextflow run main.nf --metadata data/metadata/sample_metadata.csv
-```
-Detect cryptic variants from linked mutation output
-
-```bash
-python detect_cryptic.py --covar_dir results/covar --metadata data/metadata/sample_metadata.csv
+export GISAID_TOKEN_PATH=(bash find_gisaid_token.sh)
 ```
 
 ### With Custom Parameters
@@ -91,6 +82,24 @@ nextflow run main.nf \
   --minreadlen 80
 ```
 
+### With Docker
+
+1. Build the Docker image:
+```bash
+docker build -t cryvar .
+```
+
+2. Set the GISAID token path:
+```bash
+export GISAID_TOKEN_PATH=(bash find_gisaid_token.sh)
+```
+
+3. Run the pipeline:
+```bash
+nextflow run main.nf \
+  -profile docker \
+  --metadata data/metadata/sample_metadata.csv
+```
 
 ## Parameters
 
