@@ -1,54 +1,9 @@
 nextflow.enable.dsl=2
 
+include { AUTH } from './modules/auth'
 include { PREPROCESSING } from './modules/preprocess'
+include { CRYPTIC_VARIANT_DETECTION } from './modules/cryptic_variant_detection'
 
-process GISAID_AUTHENTICATION {
-    output:
-    path "auth_complete.txt", emit: auth_status
-
-    script:
-    """
-    python << 'PYTHON_SCRIPT'
-    import sys
-    from outbreak_data import authenticate_user
-    try:
-        authenticate_user.get_authentication()
-        print('Authentication already exists')
-    except:
-        print('Missing authentication. Please run `python gisaid_authentication.py` to authenticate and try again')
-        sys.exit(1)
-    PYTHON_SCRIPT
-    
-    if [ \$? -eq 0 ]; then
-        echo "Authentication verified" > auth_complete.txt
-    else
-        exit 1
-    fi
-    """
-}
-
-process COVAR {
-    tag "$sample_id"
-    publishDir "${params.outdir}/covar", mode: 'copy'
-
-    input:
-    tuple val(sample_id), path(bam), path(bai)
-    path reference
-    path annotation
-
-    output:
-    tuple val(sample_id), path("${sample_id}.covar.tsv")
-
-    """
-    covar \\
-    -i ${bam} \\
-    -r ${reference} \\
-    -a ${annotation} \\
-    -t ${task.cpus} \\
-    -o ${sample_id}.covar.tsv \\
-    ${params.covar_options}
-    """
-}
 
 workflow {
     if( !params.metadata ) {
@@ -124,11 +79,16 @@ workflow {
     reference_ch = Channel.value(file(params.reference))
     annotation_ch = Channel.value(file(params.annotation))
     
-    // Check GISAID authentication
-    auth_status = GISAID_AUTHENTICATION()
+    auth_status = AUTH()
     
     final_bams = PREPROCESSING(reads_ch, reference_ch, metadata_ch)
     
-    covar_ch = COVAR(final_bams, reference_ch, annotation_ch)
+    CRYPTIC_VARIANT_DETECTION(
+        final_bams,
+        reference_ch,
+        annotation_ch,
+        Channel.value(metadataFile),
+        file(params.detect_cryptic_script)
+    )
 }
 
