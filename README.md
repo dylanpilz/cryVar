@@ -9,7 +9,7 @@ The pipeline processes SARS-CoV-2 sequencing data through the following steps:
 2. **Sorting & Indexing**: Sorts and indexes BAM files
 3. **Primer Trimming**: Removes primer sequences using ivar trim
 4. **Variant Calling**: Calls physically linked variants using covar
-5. **Cryptic Variant Detection**: Separate script to query outbreak.info clinical API for cryptic variants
+5. **Cryptic Variant Detection**: Query outbreak.info clinical API for cryptic variants
 
 ## Prerequisites
 
