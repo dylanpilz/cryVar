@@ -1,6 +1,7 @@
 data/fastq/*
 data/metadata/*
 results/*
+plots/*
 
 # nextflow
 .nextflow/*
